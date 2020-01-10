@@ -8,6 +8,7 @@ from torch import distributed, nn
 from torch.utils import data
 from torchvision import datasets, transforms
 import time
+import os
 
 
 def distributed_is_initialized():
@@ -151,19 +152,22 @@ class MNISTDataLoader(data.DataLoader):
 
 def run(args):
     device = torch.device('cuda' if torch.cuda.is_available() and not args.no_cuda else 'cpu')
-    print("device={}".format(device))
+    # print("device={}".format(device))
 
     if torch.cuda.is_available():
         print("ngpus={}".format(args.ngpus))
         n = args.ngpus // args.world_size
         print("n={}".format(n))
         device_ids = list(range(args.rank * n, (args.rank + 1) * n))
+        #device_ids = list(range(0, args.ngpus))
         print(device_ids)
 
     model = Net()
     if distributed_is_initialized():
         model.to(device)
-        model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids)
+#         model.to(device_ids[0])
+#         model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids)
+        model = nn.parallel.DistributedDataParallel(model)
     else:
         model = nn.DataParallel(model)
         model.to(device)
@@ -193,9 +197,12 @@ def main():
     parser.add_argument('--root', type=str, default='data')
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--ngpus', type=int, default=1)
+    parser.add_argument('--gpu_id', default='0', type=str, help='id(s) for CUDA_VISIBLE_DEVICES')
 
     args = parser.parse_args()
     print(args)
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
+
 
     if args.world_size > 1:
         distributed.init_process_group(
