@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch import distributed, nn
 from torch.utils import data
 from torchvision import datasets, transforms
+import time
 
 
 def distributed_is_initialized():
@@ -148,14 +149,21 @@ class MNISTDataLoader(data.DataLoader):
             sampler=sampler,
         )
 
-
 def run(args):
     device = torch.device('cuda' if torch.cuda.is_available() and not args.no_cuda else 'cpu')
+    print("device={}".format(device))
+
+    if torch.cuda.is_available():
+        print("ngpus={}".format(args.ngpus))
+        n = args.ngpus // args.world_size
+        print("n={}".format(n))
+        device_ids = list(range(args.rank * n, (args.rank + 1) * n))
+        print(device_ids)
 
     model = Net()
     if distributed_is_initialized():
         model.to(device)
-        model = nn.parallel.DistributedDataParallel(model)
+        model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids)
     else:
         model = nn.DataParallel(model)
         model.to(device)
@@ -184,6 +192,8 @@ def main():
     parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
     parser.add_argument('--root', type=str, default='data')
     parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--ngpus', type=int, default=1)
+
     args = parser.parse_args()
     print(args)
 
@@ -195,7 +205,10 @@ def main():
             rank=args.rank,
         )
 
+    start = time.time()
     run(args)
+    end = time.time()
+    print("Time elapse: {}".format(end - start))
 
 
 if __name__ == '__main__':
